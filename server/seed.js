@@ -9,11 +9,19 @@ const BloodRequest = require('./models/BloodRequest');
 const Notification = require('./models/Notification');
 const Appointment = require('./models/Appointment');
 
-const seedDatabase = async () => {
+const seedDatabase = async (forceClear = true) => {
   try {
-    console.log('🌱 Starting database seeding...');
+    if (!forceClear) {
+      const existingCount = await User.countDocuments();
+      if (existingCount > 0) {
+        console.log(`ℹ️ Cluster already contains ${existingCount} users. Preserving existing data and skipping seed.`);
+        return;
+      }
+    }
 
-    // Clear existing data
+    console.log('🌱 Starting database seeding into MongoDB Cluster...');
+
+    // Clear existing data only when forced or when database is empty
     await User.deleteMany({});
     await BloodBank.deleteMany({});
     await Hospital.deleteMany({});
@@ -33,8 +41,8 @@ const seedDatabase = async () => {
       email: 'admin@pulselife.com',
       password: adminPassword,
       role: 'Admin',
-      phone: '+1 (555) 019-2831',
-      address: '777 Life Tower, Central District, NY',
+      phone: '+91 9865237417',
+      address: '41, Peter`s road , OMR, Chennai, Tamil Nadu',
       bloodGroup: 'O+',
       age: 35,
       gender: 'Male',
@@ -284,5 +292,28 @@ const seedDatabase = async () => {
     console.error('❌ Seeding error:', error);
   }
 };
+
+if (require.main === module) {
+  require('dotenv').config();
+  const MONGO_URI = process.env.MONGO_URI;
+  if (!MONGO_URI) {
+    console.error('❌ Error: MONGO_URI is not set in server/.env');
+    process.exit(1);
+  }
+  const maskedUri = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
+  console.log(`Connecting to MongoDB Cluster: ${maskedUri}`);
+  mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 15000, connectTimeoutMS: 15000 })
+    .then(async () => {
+      console.log('🌿 Connected to MongoDB Cluster successfully.');
+      await seedDatabase(true);
+      await mongoose.disconnect();
+      console.log('🔌 Disconnected from MongoDB. Seeding finished.');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('❌ Seeding failed to connect to MongoDB Cluster:', err.message);
+      process.exit(1);
+    });
+}
 
 module.exports = seedDatabase;

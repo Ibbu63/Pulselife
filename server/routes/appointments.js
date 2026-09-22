@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Appointment = require('../models/Appointment');
+const BloodBank = require('../models/BloodBank');
 const memoryStore = require('../memoryStore');
 const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
@@ -22,18 +23,24 @@ router.get('/', verifyToken, async (req, res) => {
 
 router.post('/', verifyToken, authorizeRoles('Donor', 'Admin'), async (req, res) => {
   try {
-    const { bloodBankId, appointmentDate, timeSlot } = req.body;
+    let { bloodBankId, appointmentDate, timeSlot, notes } = req.body;
 
     if (isDbConnected()) {
+      if (!bloodBankId || (typeof bloodBankId === 'string' && bloodBankId.startsWith('bb_'))) {
+        const defaultBb = await BloodBank.findOne();
+        bloodBankId = defaultBb ? defaultBb._id : null;
+      }
       const newAppt = new Appointment({
         donorId: req.user.id,
-        bloodBankId: bloodBankId || memoryStore.bloodBanks[0]._id,
+        bloodBankId,
         appointmentDate: new Date(appointmentDate),
         timeSlot,
+        notes: notes || '',
         status: 'Scheduled'
       });
       await newAppt.save();
-      return res.status(201).json(newAppt);
+      const populated = await Appointment.findById(newAppt._id).populate('donorId').populate('bloodBankId');
+      return res.status(201).json(populated);
     } else {
       const newAppt = {
         _id: 'apt_' + Date.now(),

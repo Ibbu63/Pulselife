@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const BloodRequest = require('../models/BloodRequest');
+const Hospital = require('../models/Hospital');
 const memoryStore = require('../memoryStore');
 const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
@@ -28,8 +29,12 @@ router.post('/', verifyToken, authorizeRoles('Hospital', 'Admin'), async (req, r
     const { bloodGroup, units, urgency, reason } = req.body;
 
     if (isDbConnected()) {
+      let hospital = await Hospital.findOne({ userId: req.user.id });
+      if (!hospital) {
+        hospital = await Hospital.findOne();
+      }
       const newRequest = new BloodRequest({
-        hospitalId: req.user.id,
+        hospitalId: hospital ? hospital._id : req.user.id,
         bloodGroup,
         units: Number(units),
         urgency: urgency || 'Normal',
@@ -37,7 +42,10 @@ router.post('/', verifyToken, authorizeRoles('Hospital', 'Admin'), async (req, r
         status: 'Pending'
       });
       await newRequest.save();
-      return res.status(201).json(newRequest);
+      const populated = await BloodRequest.findById(newRequest._id)
+        .populate('hospitalId')
+        .populate('assignedBloodBankId');
+      return res.status(201).json(populated);
     } else {
       const newRequest = {
         _id: 'req_' + Date.now(),

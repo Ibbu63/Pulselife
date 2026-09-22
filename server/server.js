@@ -73,7 +73,7 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/pulselife_bloodbank';
+const MONGO_URI = process.env.MONGO_URI;
 
 const startAppServer = async () => {
   server.listen(PORT, () => {
@@ -82,14 +82,39 @@ const startAppServer = async () => {
     console.log(`====================================================`);
   });
 
-  try {
-    console.log('🔄 Connecting to MongoDB...');
-    await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 1500 });
-    console.log('🌿 Connected to Local MongoDB!');
-    const seedDatabase = require('./seed');
-    await seedDatabase();
-  } catch (err) {
-    console.log('⚡ Using Fast In-Memory Store for instant zero-latency demo execution.');
+  if (MONGO_URI && MONGO_URI.trim() !== '') {
+    try {
+      console.log('🔄 Connecting to MongoDB Cluster...');
+      const maskedUri = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
+      console.log(`📡 Cluster URI: ${maskedUri}`);
+
+      await mongoose.connect(MONGO_URI.trim(), {
+        serverSelectionTimeoutMS: 15000,
+        connectTimeoutMS: 15000
+      });
+      console.log('🌿 Connected to MongoDB Cluster successfully!');
+
+      const User = require('./models/User');
+      const existingUsers = await User.countDocuments();
+      if (existingUsers === 0) {
+        console.log('🌱 Database is empty. Seeding initial baseline data into your MongoDB cluster...');
+        const seedDatabase = require('./seed');
+        await seedDatabase(false);
+      } else {
+        console.log(`📊 Found existing data in cluster (${existingUsers} users registered). Data preserved.`);
+      }
+    } catch (err) {
+      console.error('❌ MongoDB Cluster Connection Error:', err.message);
+      console.log('⚠️ Falling back to In-Memory Store for demo execution.');
+      console.log('💡 Verification checklist:');
+      console.log('   1. Check your MONGO_URI string in server/.env');
+      console.log('   2. Ensure 0.0.0.0/0 (or your current IP) is added to Network Access in MongoDB Atlas');
+      console.log('   3. Ensure database username and password in URI are correct (and URL-encoded if special chars exist)');
+    }
+  } else {
+    console.log('⚠️ No MONGO_URI configured in server/.env.');
+    console.log('⚡ Using Fast In-Memory Store for demo execution.');
+    console.log('💡 Add your MongoDB Atlas cluster connection string to server/.env to store data permanently in your cluster.');
   }
 };
 

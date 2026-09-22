@@ -26,6 +26,25 @@ router.post('/register', async (req, res) => {
       const newUser = new User({ name, email, password: hashedPassword, role: role || 'Donor', phone, address, bloodGroup, age, gender });
       const savedUser = await newUser.save();
 
+      if (savedUser.role === 'Hospital') {
+        await Hospital.create({
+          name,
+          email,
+          phone: phone || '',
+          address: address || '',
+          licenseNumber: 'HOSP-' + Math.floor(1000 + Math.random() * 9000),
+          userId: savedUser._id
+        });
+      } else if (savedUser.role === 'Blood Bank') {
+        await BloodBank.create({
+          name,
+          address: address || '',
+          contact: phone || '',
+          license: 'BB-LIC-' + Math.floor(10000 + Math.random() * 90000),
+          userId: savedUser._id
+        });
+      }
+
       const token = jwt.sign({ id: savedUser._id, role: savedUser.role, email: savedUser.email, name: savedUser.name }, JWT_SECRET, { expiresIn: '7d' });
       return res.status(201).json({ token, user: savedUser });
     } else {
@@ -41,6 +60,27 @@ router.post('/register', async (req, res) => {
         name, email, password: hashedPassword, role: role || 'Donor', phone: phone || '', address: address || '', bloodGroup: bloodGroup || 'A+', age: age || 25, gender: gender || 'Unspecified'
       };
       memoryStore.users.push(newUser);
+
+      if (newUser.role === 'Hospital') {
+        memoryStore.hospitals.push({
+          _id: 'hosp_' + Date.now(),
+          name,
+          email,
+          phone: phone || '',
+          address: address || '',
+          licenseNumber: 'HOSP-' + Math.floor(1000 + Math.random() * 9000),
+          userId: newUser._id
+        });
+      } else if (newUser.role === 'Blood Bank') {
+        memoryStore.bloodBanks.push({
+          _id: 'bb_' + Date.now(),
+          name,
+          address: address || '',
+          contact: phone || '',
+          license: 'BB-LIC-' + Math.floor(10000 + Math.random() * 90000),
+          userId: newUser._id
+        });
+      }
 
       const token = jwt.sign({ id: newUser._id, role: newUser.role, email: newUser.email, name: newUser.name }, JWT_SECRET, { expiresIn: '7d' });
       return res.status(201).json({ token, user: newUser });

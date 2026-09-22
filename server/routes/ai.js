@@ -27,7 +27,7 @@ router.get('/recommend-donors', async (req, res) => {
 
     let donors;
     if (isDbConnected()) {
-      donors = await User.find({ role: 'Donor', bloodGroup: { $in: compatibleGroups } }).select('-password');
+      donors = await User.find({ role: 'Donor', bloodGroup: { $in: compatibleGroups } }).select('-password').lean();
     } else {
       donors = memoryStore.users.filter(u => u.role === 'Donor' && compatibleGroups.includes(u.bloodGroup));
     }
@@ -53,13 +53,26 @@ router.get('/recommend-donors', async (req, res) => {
 router.get('/predict-shortage', async (req, res) => {
   try {
     const allGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-    const predictions = allGroups.map(group => {
-      let currentStock = 10;
-      if (!isDbConnected()) {
-        const items = memoryStore.inventory.filter(i => i.bloodGroup === group);
-        currentStock = items.reduce((sum, item) => sum + item.units, 0);
-      }
+    const stockByGroup = {};
+    allGroups.forEach(g => { stockByGroup[g] = 0; });
 
+    if (isDbConnected()) {
+      const inventory = await BloodInventory.find({ status: 'Available' });
+      inventory.forEach(item => {
+        if (stockByGroup[item.bloodGroup] !== undefined) {
+          stockByGroup[item.bloodGroup] += item.units;
+        }
+      });
+    } else {
+      memoryStore.inventory.forEach(item => {
+        if (item.status === 'Available' && stockByGroup[item.bloodGroup] !== undefined) {
+          stockByGroup[item.bloodGroup] += item.units;
+        }
+      });
+    }
+
+    const predictions = allGroups.map(group => {
+      const currentStock = stockByGroup[group] || 0;
       let riskLevel = currentStock < 8 ? 'WARNING LOW STOCK' : 'Safe';
       let recommendation = currentStock < 8 ? `Schedule donor drive for ${group}.` : 'Stock level is adequate.';
 

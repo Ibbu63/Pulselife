@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Donation = require('../models/Donation');
+const BloodBank = require('../models/BloodBank');
+const BloodInventory = require('../models/BloodInventory');
 const memoryStore = require('../memoryStore');
 const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
@@ -31,9 +33,13 @@ router.get('/', verifyToken, async (req, res) => {
 
 router.post('/', verifyToken, authorizeRoles('Donor', 'Admin'), async (req, res) => {
   try {
-    const { bloodBankId, bloodGroup, units, remarks } = req.body;
+    let { bloodBankId, bloodGroup, units, remarks } = req.body;
 
     if (isDbConnected()) {
+      if (!bloodBankId || (typeof bloodBankId === 'string' && bloodBankId.startsWith('bb_'))) {
+        const defaultBb = await BloodBank.findOne();
+        bloodBankId = defaultBb ? defaultBb._id : null;
+      }
       const newDonation = new Donation({
         donorId: req.user.id,
         bloodBankId,
@@ -44,7 +50,10 @@ router.post('/', verifyToken, authorizeRoles('Donor', 'Admin'), async (req, res)
         remarks: remarks || 'Scheduled for donation'
       });
       await newDonation.save();
-      return res.status(201).json(newDonation);
+      const populated = await Donation.findById(newDonation._id)
+        .populate('donorId', 'name email phone bloodGroup age')
+        .populate('bloodBankId', 'name address contact');
+      return res.status(201).json(populated);
     } else {
       const newDonation = {
         _id: 'don_' + Date.now(),
@@ -89,6 +98,18 @@ router.put('/:id/test-status', verifyToken, authorizeRoles('Blood Bank', 'Admin'
       if (donation) {
         donation.testStatus = testStatus;
         await donation.save();
+
+        if (testStatus === 'Passed') {
+          const validExpiry = new Date();
+          validExpiry.setDate(validExpiry.getDate() + 35);
+          await BloodInventory.create({
+            bloodGroup: donation.bloodGroup,
+            units: donation.units || 1,
+            expiryDate: validExpiry,
+            bloodBankId: donation.bloodBankId,
+            status: 'Available'
+          });
+        }
       }
       return res.json({ message: `Test status updated to ${testStatus}`, donation });
     } else {

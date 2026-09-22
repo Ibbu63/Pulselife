@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const BloodInventory = require('../models/BloodInventory');
+const BloodBank = require('../models/BloodBank');
 const memoryStore = require('../memoryStore');
 const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
@@ -34,14 +35,23 @@ router.get('/', async (req, res) => {
 
 router.post('/', verifyToken, authorizeRoles('Blood Bank', 'Admin'), async (req, res) => {
   try {
-    const { bloodGroup, units, expiryDate, bloodBankId } = req.body;
+    let { bloodGroup, units, expiryDate, bloodBankId } = req.body;
 
     if (isDbConnected()) {
+      if (!bloodBankId || (typeof bloodBankId === 'string' && bloodBankId.startsWith('bb_'))) {
+        const linkedBb = await BloodBank.findOne({ userId: req.user.id }) || await BloodBank.findOne();
+        bloodBankId = linkedBb ? linkedBb._id : null;
+      }
       const newItem = new BloodInventory({
-        bloodGroup, units: Number(units), expiryDate: new Date(expiryDate), bloodBankId: bloodBankId || memoryStore.bloodBanks[0]._id, status: 'Available'
+        bloodGroup,
+        units: Number(units),
+        expiryDate: new Date(expiryDate),
+        bloodBankId,
+        status: 'Available'
       });
       await newItem.save();
-      return res.status(201).json(newItem);
+      const populated = await BloodInventory.findById(newItem._id).populate('bloodBankId');
+      return res.status(201).json(populated);
     } else {
       const newItem = {
         _id: 'inv_' + Date.now(),
